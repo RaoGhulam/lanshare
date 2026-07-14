@@ -12,11 +12,23 @@ on:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    # Pinned to windows-2022 (not windows-latest): as of June 2026,
+    # windows-latest points to Visual Studio 2026, whose stricter compiler
+    # hard-errors on deprecated "experimental coroutine" C++ headers that
+    # permission_handler_windows (and several other Flutter Windows
+    # plugins) still use internally. windows-2022 keeps the older,
+    # working MSVC toolchain and remains officially supported by GitHub.
+    # Revisit/remove this pin once the plugin ecosystem catches up.
+    runs-on: windows-2022
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Disable Windows Defender real-time scanning
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
