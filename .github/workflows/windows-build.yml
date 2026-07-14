@@ -82,8 +82,9 @@ jobs:
       - name: Build installer with Inno Setup
         shell: pwsh
         run: |
+          $absoluteReleaseDir = (Resolve-Path "${{ steps.locate.outputs.release_dir }}").Path
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
-            /DMyAppReleaseDir="${{ steps.locate.outputs.release_dir }}" `
+            /DMyAppReleaseDir="$absoluteReleaseDir" `
             installer\setup.iss
 
       - name: Upload installer artifact
