@@ -90,27 +90,29 @@ class _JoinPageState extends State<JoinPage> {
   }
 
   void _scanQrCode() {
+    bool hasScanned = false; // guard against multiple onDetect calls
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => Scaffold(
           appBar: AppBar(title: const Text('Scan Server QR')),
           body: MobileScanner(
             onDetect: (capture) {
-              final List<Barcode> barcodes = capture.barcodes;
+              if (hasScanned) return; // ignore subsequent frames
 
+              final List<Barcode> barcodes = capture.barcodes;
               if (barcodes.isEmpty) return;
 
               final String? ip = barcodes.first.rawValue;
-
               if (ip != null && _validateIp(ip) == null) {
+                hasScanned = true; // lock it immediately
+
                 _ipController.text = ip;
 
-                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // pop only once, guaranteed
 
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('IP filled: $ip'),
-                  ),
+                  SnackBar(content: Text('IP filled: $ip')),
                 );
               }
             },
@@ -119,7 +121,7 @@ class _JoinPageState extends State<JoinPage> {
       ),
     );
   }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
