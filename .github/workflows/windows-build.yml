@@ -1,24 +1,21 @@
-name: Windows Build
+name: Desktop Builds
 
-# Runs on every push to main, on every version tag (v1.0.0 etc.), and can
-# also be triggered manually from the Actions tab ("Run workflow" button).
 on:
   push:
-    branches: [ "main" ]
-    tags: [ "v*" ]
+    branches: ["main"]
+    tags: ["v*"]
+
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+
   workflow_dispatch: {}
 
 jobs:
+
+  # ==========================
+  # WINDOWS BUILD
+  # ==========================
   build-windows:
-    # Pinned to windows-2022 (not windows-latest): as of June 2026,
-    # windows-latest points to Visual Studio 2026, whose stricter compiler
-    # hard-errors on deprecated "experimental coroutine" C++ headers that
-    # permission_handler_windows (and several other Flutter Windows
-    # plugins) still use internally. windows-2022 keeps the older,
-    # working MSVC toolchain and remains officially supported by GitHub.
-    # Revisit/remove this pin once the plugin ecosystem catches up.
     runs-on: windows-2022
     timeout-minutes: 20
 
@@ -26,79 +23,258 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Disable Windows Defender real-time scanning
+
+      - name: Disable Windows Defender
         shell: pwsh
         run: Set-MpPreference -DisableRealtimeMonitoring $true
 
-      - name: Set up Flutter
+
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
-          # Pin this once you know which Flutter version you develop with
-          # locally, e.g. flutter-version: '3.32.0', so CI never drifts
-          # from your machine.
+          channel: stable
           cache: true
 
-      - name: Enable Windows desktop support
+
+      - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
+
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Generate app icons (Android/iOS/Windows)
+
+      - name: Generate icons
         run: dart run flutter_launcher_icons
 
-      - name: Run analyzer
-        run: flutter analyze
-        continue-on-error: true
 
-      - name: Build Windows release
+      - name: Build Windows
         run: flutter build windows --release
 
-      # The Release build lands in build/windows/x64/runner/Release
-      # (folder name is build/windows/runner/Release on older Flutter).
-      - name: Locate build output
-        id: locate
+
+      - name: Locate Windows build
+        id: win
         shell: pwsh
         run: |
-          $path = "build\windows\x64\runner\Release"
-          if (-not (Test-Path $path)) { $path = "build\windows\runner\Release" }
-          echo "release_dir=$path" >> $env:GITHUB_OUTPUT
+          $path="build\windows\x64\runner\Release"
 
-      - name: Zip the portable build
+          if (!(Test-Path $path)) {
+            $path="build\windows\runner\Release"
+          }
+
+          echo "release=$path" >> $env:GITHUB_OUTPUT
+
+
+      - name: Create portable zip
         shell: pwsh
         run: |
-          Compress-Archive -Path "${{ steps.locate.outputs.release_dir }}\*" -DestinationPath "LANShare-windows-portable.zip"
+          Compress-Archive `
+          -Path "${{ steps.win.outputs.release }}\*" `
+          -DestinationPath LANShare-windows-portable.zip
 
-      - name: Upload portable build artifact
+
+      - name: Upload portable
         uses: actions/upload-artifact@v4
         with:
           name: LANShare-windows-portable
           path: LANShare-windows-portable.zip
 
+
       - name: Install Inno Setup
         run: choco install innosetup -y
 
-      - name: Build installer with Inno Setup
+
+      - name: Build Windows installer
         shell: pwsh
         run: |
-          $absoluteReleaseDir = (Resolve-Path "${{ steps.locate.outputs.release_dir }}").Path
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
-            /DMyAppReleaseDir="$absoluteReleaseDir" `
-            installer\setup.iss
+          $dir=(Resolve-Path "${{ steps.win.outputs.release }}").Path
 
-      - name: Upload installer artifact
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+          /DMyAppReleaseDir="$dir" `
+          installer\setup.iss
+
+
+      - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: LANShare-windows-installer
           path: installer\Output\*.exe
 
-      # When the workflow was triggered by a version tag (e.g. v1.2.0),
-      # also publish both files as a GitHub Release automatically.
+
+
+  # ==========================
+  # UBUNTU BUILD
+  # ==========================
+  build-ubuntu:
+
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt update
+
+          sudo apt install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            liblzma-dev \
+            dpkg-dev
+
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+
+      - name: Install dependencies
+        run: flutter pub get
+
+
+      - name: Generate icons
+        run: dart run flutter_launcher_icons
+
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+
+
+      # Portable Ubuntu build
+      - name: Create portable archive
+        run: |
+          tar -czf LANShare-linux-portable.tar.gz \
+          -C build/linux/x64/release bundle
+
+
+
+      - name: Upload Linux portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: LANShare-linux-portable
+          path: LANShare-linux-portable.tar.gz
+
+
+
+      # Debian installer
+      - name: Create Debian package
+        shell: bash
+        run: |
+
+          mkdir -p package/usr/local/LANShare
+          mkdir -p package/usr/share/applications
+          mkdir -p package/usr/share/icons/hicolor/256x256/apps
+          mkdir -p package/DEBIAN
+
+
+          cp -r build/linux/x64/release/bundle/* \
+          package/usr/local/LANShare/
+
+
+          cp assets/icon/icon.png \
+          package/usr/share/icons/hicolor/256x256/apps/lanshare.png
+
+
+
+          cat > package/usr/share/applications/lanshare.desktop <<EOF
+          [Desktop Entry]
+          Name=LANShare
+          Comment=Share clipboard text and files over LAN
+          Exec=/usr/local/LANShare/lanshare
+          Icon=lanshare
+          Terminal=false
+          Type=Application
+          Categories=Network;
+          EOF
+
+
+
+          cat > package/DEBIAN/control <<EOF
+          Package: lanshare
+          Version: 1.0.0
+          Architecture: amd64
+          Maintainer: LANShare
+          Description: Share clipboard text and files over LAN
+          Depends: libgtk-3-0
+          EOF
+
+
+
+          dpkg-deb --build package LANShare-linux-installer.deb
+
+
+
+      - name: Upload Debian installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: LANShare-linux-installer
+          path: LANShare-linux-installer.deb
+
+
+
+
+  # ==========================
+  # RELEASE
+  # ==========================
+  create-release:
+
+    needs:
+      - build-windows
+      - build-ubuntu
+
+    if: startsWith(github.ref,'refs/tags/v')
+
+    runs-on: ubuntu-latest
+
+
+    steps:
+
+      - name: Download Windows portable
+        uses: actions/download-artifact@v4
+        with:
+          name: LANShare-windows-portable
+
+
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: LANShare-windows-installer
+
+
+      - name: Download Linux portable
+        uses: actions/download-artifact@v4
+        with:
+          name: LANShare-linux-portable
+
+
+      - name: Download Linux installer
+        uses: actions/download-artifact@v4
+        with:
+          name: LANShare-linux-installer
+
+
+
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+
           files: |
             LANShare-windows-portable.zip
-            installer\Output\*.exe
+            *.exe
+            LANShare-linux-portable.tar.gz
+            LANShare-linux-installer.deb
