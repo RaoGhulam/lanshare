@@ -256,6 +256,15 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Patch desktop_drop compileSdk
+        shell: bash
+        run: |
+          PLUGIN_PATH=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "desktop_drop-*" -type d | head -n1)
+          GRADLE_FILE="$PLUGIN_PATH/android/build.gradle"
+          echo "Patching: $GRADLE_FILE"
+          cat "$GRADLE_FILE"
+          sed -i -E 's/compileSdkVersion [0-9]+/compileSdkVersion 36/' "$GRADLE_FILE"
+          cat "$GRADLE_FILE"
 
       - name: Generate icons
         run: dart run flutter_launcher_icons
