@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../services/tcp_service.dart';
 import 'transfer_page.dart';
@@ -54,6 +55,8 @@ class _HostPageState extends State<HostPage> {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Create Server')),
       body: Padding(
@@ -72,7 +75,7 @@ class _HostPageState extends State<HostPage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               ElevatedButton(
                 onPressed: () {
                   setState(() => _errorMessage = null);
@@ -84,22 +87,56 @@ class _HostPageState extends State<HostPage> {
               const Text(
                 'Server Running',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              const SizedBox(height: 32),
-              _InfoTile(label: 'IP', value: _service.localIp ?? '...'),
-              const SizedBox(height: 16),
-              _InfoTile(label: 'Port', value: '${_service.port}'),
-              const SizedBox(height: 16),
+
+              const SizedBox(height: 12),
+
+              if (_service.localIp != null)
+                Flexible(
+                  child: Center(
+                    child: QrImageView(
+                      data: _service.localIp!,
+                      version: QrVersions.auto,
+                      size: screenHeight * 0.22,
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 12),
+
+              _InfoTile(
+                label: 'IP',
+                value: _service.localIp ?? '...',
+              ),
+
+              const SizedBox(height: 8),
+
+              _InfoTile(
+                label: 'Port',
+                value: '${_service.port}',
+              ),
+
+              const SizedBox(height: 8),
+
               _InfoTile(
                 label: 'Status',
                 value: _service.connectionState == LanConnectionState.listening
                     ? 'Listening...'
                     : 'Starting...',
               ),
-              const SizedBox(height: 40),
-              const Center(child: CircularProgressIndicator()),
+
               const SizedBox(height: 16),
+
+              const Center(
+                child: CircularProgressIndicator(),
+              ),
+
+              const SizedBox(height: 8),
+
               const Text(
                 'Waiting for a device to connect...',
                 textAlign: TextAlign.center,

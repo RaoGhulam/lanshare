@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../services/tcp_service.dart';
 import 'transfer_page.dart';
@@ -88,6 +89,37 @@ class _JoinPageState extends State<JoinPage> {
     return null;
   }
 
+  void _scanQrCode() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Scan Server QR')),
+          body: MobileScanner(
+            onDetect: (capture) {
+              final List<Barcode> barcodes = capture.barcodes;
+
+              if (barcodes.isEmpty) return;
+
+              final String? ip = barcodes.first.rawValue;
+
+              if (ip != null && _validateIp(ip) == null) {
+                _ipController.text = ip;
+
+                Navigator.of(context).pop();
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('IP filled: $ip'),
+                  ),
+                );
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -121,7 +153,15 @@ class _JoinPageState extends State<JoinPage> {
                 ),
                 validator: _validatePort,
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 20),
+
+              OutlinedButton.icon(
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Scan QR Code'),
+                onPressed: _isConnecting ? null : _scanQrCode,
+              ),
+
+              const SizedBox(height: 20),
               ElevatedButton.icon(
                 icon: _isConnecting
                     ? const SizedBox(

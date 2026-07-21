@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/foundation.dart';
 
 import '../services/tcp_service.dart';
 import 'home_page.dart';
@@ -21,6 +23,7 @@ class TransferPage extends StatefulWidget {
 class _TransferPageState extends State<TransferPage> {
   final TcpService _service = TcpService.instance;
   StreamSubscription<String>? _snackbarSubscription;
+  bool _isDraggingFiles = false;
   bool _isSendingClipboard = false;
   bool _isPickingFiles = false;
   bool _hasLeft = false;
@@ -113,6 +116,116 @@ class _TransferPageState extends State<TransferPage> {
     } finally {
       if (mounted) setState(() => _isPickingFiles = false);
     }
+  }
+
+  bool get _supportsDragDrop {
+    if (kIsWeb) return false;
+
+    return Platform.isWindows || Platform.isLinux;
+  }
+
+  Future<void> _handleDroppedFiles(List<DropItem> items) async {
+    for (final item in items) {
+      try {
+        await _service.sendFile(File(item.path));
+      } catch (e) {
+        _showSnackbar('Failed to send file: $e');
+      }
+    }
+  }
+  
+  Widget filePickerArea() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_supportsDragDrop)
+          DropTarget(
+            onDragEntered: (_) {
+              setState(() {
+                _isDraggingFiles = true;
+              });
+            },
+            onDragExited: (_) {
+              setState(() {
+                _isDraggingFiles = false;
+              });
+            },
+            onDragDone: (details) async {
+              setState(() {
+                _isDraggingFiles = false;
+              });
+
+              await _handleDroppedFiles(details.files);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              height: 120,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: _isDraggingFiles
+                    ? Colors.blue.shade50
+                    : Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _isDraggingFiles
+                      ? Colors.blue
+                      : Colors.grey.shade300,
+                  width: 2,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _isDraggingFiles
+                        ? Icons.file_download
+                        : Icons.cloud_upload_outlined,
+                    size: 40,
+                    color: _isDraggingFiles
+                        ? Colors.blue
+                        : Colors.grey,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isDraggingFiles
+                        ? 'Drop files here'
+                        : 'Drag & drop files here',
+                    style: TextStyle(
+                      color: _isDraggingFiles
+                          ? Colors.blue
+                          : Colors.grey.shade700,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (!_isDraggingFiles)
+                    Text(
+                      'or use the button below',
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 13,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+        const SizedBox(height: 16),
+
+        ElevatedButton.icon(
+          icon: const Icon(Icons.upload_file),
+          label: Text(
+            _isPickingFiles
+                ? 'Selecting...'
+                : 'Select Files',
+          ),
+          onPressed: _isPickingFiles
+              ? null
+              : _selectAndSendFiles,
+        ),
+      ],
+    );
   }
 
   void _showReceivedFiles() {
@@ -217,9 +330,34 @@ class _TransferPageState extends State<TransferPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Received Clipboard',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Received Clipboard',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.copy, size: 18),
+                        tooltip: 'Copy all',
+                        onPressed: () {
+                          final text = _service.lastReceivedClipboard;
+
+                          if (text != null && text.isNotEmpty) {
+                            Clipboard.setData(
+                              ClipboardData(text: text),
+                            );
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Copied to clipboard'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   SelectableText(
@@ -234,11 +372,7 @@ class _TransferPageState extends State<TransferPage> {
           const SizedBox(height: 24),
 
           // --- Files ---
-          ElevatedButton.icon(
-            icon: const Icon(Icons.upload_file),
-            label: Text(_isPickingFiles ? 'Selecting...' : 'Select File'),
-            onPressed: _isPickingFiles ? null : _selectAndSendFiles,
-          ),
+          filePickerArea(),
           if (_service.sendProgress != null) ...[
             const SizedBox(height: 12),
             Text('Sending: ${_service.currentSendingFileName ?? ''}'),

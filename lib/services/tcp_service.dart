@@ -422,10 +422,18 @@ class TcpService extends ChangeNotifier {
   /// Finds a usable IPv4 LAN address for this device (e.g. 192.168.1.23).
   Future<String> getLocalIpAddress() async {
     try {
+      if (Platform.isWindows) {
+        final wifiIp = await _getWindowsWifiIp();
+        if (wifiIp != null) {
+          return wifiIp;
+        }
+      }
+
       final interfaces = await NetworkInterface.list(
         includeLoopback: false,
         type: InternetAddressType.IPv4,
       );
+
       for (final interface in interfaces) {
         for (final addr in interface.addresses) {
           if (!addr.isLoopback) {
@@ -434,10 +442,27 @@ class TcpService extends ChangeNotifier {
         }
       }
     } catch (_) {
-      // Fall through to the placeholder below.
+      // Fall through
     }
     return '0.0.0.0';
   }
+
+Future<String?> _getWindowsWifiIp() async {
+  try {
+    final result = await Process.run(
+      'powershell',
+      [
+        '-Command',
+        r"(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -like '*Wi-Fi*'}).IPAddress"
+      ],
+    );
+    final ip = result.stdout.toString().trim();
+    if (RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(ip)) {
+      return ip;
+    }
+  } catch (_) {}
+  return null;
+}
 
   /// On very old Android (API 28 and below, i.e. pre-scoped-storage) a
   /// classic storage permission is still required to write into a public

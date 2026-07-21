@@ -15,7 +15,7 @@ plugins {
 
 android {
     namespace = "com.example.lanshare"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
