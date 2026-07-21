@@ -121,7 +121,7 @@ class _JoinPageState extends State<JoinPage> {
       ),
     );
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(

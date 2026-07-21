@@ -5,6 +5,8 @@ Android devices on the same Wi-Fi network, using raw TCP sockets
 (`dart:io` `ServerSocket` / `Socket`). No Firebase, no backend, no HTTP,
 no WebSockets - just a direct peer-to-peer TCP connection over LAN.
 
+---
+
 ## Project layout
 
 ```
@@ -26,22 +28,59 @@ android_kotlin_snippet/
                               (goes in android/app/src/main/kotlin/...)
 ```
 
+---
+
+## Platform Integration
+
+LANShare primarily uses Flutter APIs and plugins for cross-platform system access, with native platform APIs used only when required.
+
+- **Networking:** Uses Dart `Socket` and `ServerSocket` APIs for LAN TCP communication.
+- **QR Scanning:** Uses the `mobile_scanner` plugin for camera-based QR detection.
+- **Clipboard:** Uses Flutter's `Clipboard` API for system clipboard sharing.
+- **Files:** Uses `file_picker` for selecting files and Dart `File` APIs for reading and transferring files.
+- **Storage:** Uses `permission_handler` for legacy Android storage permissions and a Flutter `MethodChannel` bridge to Android's native `MediaStore` API for saving received files to the public Downloads folder.
+- **Storage Paths:** Uses `path_provider` to access platform-specific directories such as temporary storage, Downloads, and application documents folders.
+- **Drag & Drop:** Uses the `desktop_drop` plugin for desktop file drag-and-drop support.
+
+Most functionality is implemented using Flutter abstractions. Platform-specific code is only used where required, such as Android's native `MediaStore` integration for public file storage.
+
+---
+
 ## Wire protocol
 
-Every packet sent over the socket has this shape:
+LANShare uses a custom TCP-based binary protocol for device-to-device communication.
 
 ```
-[ 4 bytes: header length, big-endian int32 ]
-[ N bytes: UTF-8 JSON header               ]
-[ M bytes: raw payload (text or file bytes) ]
+Each packet follows this format:
+[ 4 bytes ] Header length (big-endian int32)
+[ N bytes ] UTF-8 JSON header
+[ M bytes ] Raw payload data
 ```
 
-Clipboard header: `{"type":"clipboard","length":23}`
-File header: `{"type":"file","name":"photo.jpg","size":12345678}`
 
-No base64 - payload bytes are sent as-is, and files are streamed in chunks
-directly to disk as they arrive, so there's no practical file size limit
-imposed by the app itself.
+### Packet Types
+
+- **Clipboard Transfer**
+  - Header contains:
+    - `type`: `"clipboard"`
+    - `length`: size of text payload in bytes
+  - Payload contains raw UTF-8 clipboard text.
+
+- **File Transfer**
+  - Header contains:
+    - `type`: `"file"`
+    - `name`: file name
+    - `size`: file size in bytes
+  - Payload contains the raw file bytes streamed over TCP.
+
+### Design Notes
+
+- Uses JSON only for packet metadata.
+- Transfers actual content as raw bytes (no Base64 encoding).
+- File data is streamed separately to support large files without loading them completely into memory.
+- Handles packet parsing and partial TCP reads in the networking layer.
+
+---
 
 ## Where received files are saved
 
@@ -74,57 +113,7 @@ transfer is complete:
   denied on very old Android), the file is kept at its private temp path
   instead of being lost, and a SnackBar explains what happened.
 
-## Setup
-
-This is a pure Dart/`lib` source tree. Because the sandbox this was
-generated in has no Flutter SDK / network access to pub.dev, the Flutter
-project scaffolding (`android/`, `ios/`, etc.) was not generated here. To
-run the app:
-
-1. Create a fresh Flutter project and copy these files in. Note: Dart/Flutter
-   project names must be lowercase, so the generated project folder is
-   `lanshare` even though this source folder is `LANShare`:
-
-   ```bash
-   flutter create lanshare
-   cd lanshare
-   # copy pubspec.yaml and lib/ from this project over the generated ones
-   ```
-
-2. Add the Android permissions in
-   `android_manifest_snippet/AndroidManifest_additions.xml` to your
-   generated `android/app/src/main/AndroidManifest.xml` (INTERNET permission
-   is required for sockets to work at all).
-
-3. Replace the generated
-   `android/app/src/main/kotlin/<your/package/path>/MainActivity.kt`
-   with `android_kotlin_snippet/MainActivity.kt` from this project, then
-   fix the `package com.example.lanshare` line at the top of that file so
-   it matches your app's actual package name (same one used for
-   `applicationId`/`namespace` in `android/app/build.gradle`). This is what
-   makes received files actually land in the public Downloads folder
-   instead of just app-private storage.
-
-4. Install dependencies and run:
-
-   ```bash
-   flutter pub get
-   flutter run
-   ```
-
-5. Make sure `android/app/build.gradle` has `minSdkVersion 21` or higher
-   (required by `file_picker` / `permission_handler`).
-
-6. Generate the app launcher icon (a wifi glyph, see `assets/icon/icon.png`)
-   for Android and iOS:
-
-   ```bash
-   dart run flutter_launcher_icons
-   ```
-
-   This reads the `flutter_launcher_icons:` config in `pubspec.yaml` and
-   writes the platform-specific icon files into `android/` and `ios/`
-   automatically - no manual asset wrangling needed.
+---
 
 ## Usage
 

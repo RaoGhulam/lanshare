@@ -227,6 +227,72 @@ jobs:
 
 
 
+  # ==========================
+  # ANDROID BUILD
+  # ==========================
+  build-android:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+
+      - name: Install dependencies
+        run: flutter pub get
+
+
+      - name: Generate icons
+        run: dart run flutter_launcher_icons
+
+
+      - name: Decode keystore
+        shell: bash
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/lanshare-release-key.jks
+
+
+      - name: Create key.properties
+        shell: bash
+        run: |
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=lanshare-release-key.jks
+          EOF
+
+
+      - name: Build APK
+        run: flutter build apk --release
+
+
+      - name: Rename APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk LANShare-android.apk
+
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LANShare-android-apk
+          path: LANShare-android.apk
+
+
 
   # ==========================
   # RELEASE
@@ -236,6 +302,7 @@ jobs:
     needs:
       - build-windows
       - build-ubuntu
+      - build-android
 
     if: startsWith(github.ref,'refs/tags/v')
 
@@ -268,13 +335,20 @@ jobs:
           name: LANShare-linux-installer
 
 
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: LANShare-android-apk
+
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          generate_release_notes: true
 
           files: |
             LANShare-windows-portable.zip
             *.exe
             LANShare-linux-portable.tar.gz
             LANShare-linux-installer.deb
+            LANShare-android.apk
