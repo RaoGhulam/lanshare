@@ -230,7 +230,7 @@ jobs:
 
 
 
-    # ==========================
+  # ==========================
   # ANDROID BUILD
   # ==========================
   build-android:
@@ -238,42 +238,33 @@ jobs:
     timeout-minutes: 20
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v3
+        uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-
-
-      - name: Enable Android
-        run: flutter config --enable-android
 
 
       - name: Install dependencies
         run: flutter pub get
 
 
-      - name: Generate launcher icons
+      - name: Generate icons
         run: dart run flutter_launcher_icons
 
 
-      # --------------------------
-      # Signing
-      # --------------------------
-
-      - name: Decode Android keystore
+      - name: Decode keystore
         shell: bash
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/lanshare-release-key.jks
@@ -290,36 +281,17 @@ jobs:
           EOF
 
 
-      # --------------------------
-      # Build
-      # --------------------------
-
       - name: Build ARM64 APK
-        run: |
-          flutter build apk \
-          --release \
-          --target-platform android-arm64
-
-
-      - name: Verify APK
-        shell: bash
-        run: |
-          echo "Generated APK:"
-          ls -lh build/app/outputs/flutter-apk/
+        run: flutter build apk --release --target-platform android-arm64
 
 
       - name: Rename APK
-        shell: bash
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk \
-          LANShare-android-arm64.apk
+          ls -la build/app/outputs/flutter-apk/
+          cp build/app/outputs/flutter-apk/app-release.apk LANShare-android-arm64.apk
 
 
-      # --------------------------
-      # Upload
-      # --------------------------
-
-      - name: Upload Android APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: LANShare-android-arm64-apk
@@ -384,4 +356,4 @@ jobs:
             *.exe
             LANShare-linux-portable.tar.gz
             LANShare-linux-installer.deb
-            LANShare-android-arm64.apk
+            LANShare-android.apk
