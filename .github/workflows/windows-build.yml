@@ -281,19 +281,19 @@ jobs:
           EOF
 
 
-      - name: Build APK
-        run: flutter build apk --release
+      - name: Build ARM64 APK
+        run: flutter build apk --release --target-platform android-arm64
 
 
       - name: Rename APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk LANShare-android.apk
+        run: cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk LANShare-android-arm64.apk
 
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: LANShare-android-apk
-          path: LANShare-android.apk
+          name: LANShare-android-arm64-apk
+          path: LANShare-android-arm64.apk
 
 
 
@@ -341,7 +341,7 @@ jobs:
       - name: Download Android APK
         uses: actions/download-artifact@v4
         with:
-          name: LANShare-android-apk
+          name: LANShare-android-arm64-apk
 
 
       - name: Create GitHub Release
