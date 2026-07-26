@@ -356,4 +356,4 @@ jobs:
             *.exe
             LANShare-linux-portable.tar.gz
             LANShare-linux-installer.deb
-            LANShare-android-arm64-apk
+            LANShare-android-arm64.apk
