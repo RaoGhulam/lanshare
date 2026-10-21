@@ -155,6 +155,11 @@ class TcpService extends ChangeNotifier {
     connectionState = LanConnectionState.connected;
     _resetParserState();
 
+    // Each connection is its own session: don't carry over the previous
+    // peer's clipboard/file list. (The files themselves stay on disk.)
+    lastReceivedClipboard = null;
+    receivedFiles = <ReceivedFileInfo>[];
+
     _subscription = socket.listen(
       _onData,
       onDone: _handleRemoteClosed,
