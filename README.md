@@ -146,6 +146,11 @@ transfer is complete:
      the socket; the peer's socket then reports "closed" automatically, so
      **both** devices are returned to the Home screen, not just the one
      that tapped it.
+   - On Android, a **"LANShare" notification** stays visible while hosting
+     or connected. It keeps the app running in the background, so you can
+     switch to other apps (e.g. to share a file into LANShare) without
+     the connection dropping. If your phone still closes it, set LANShare's
+     battery usage to "Unrestricted" / "No restrictions" in its app info.
 
 Both devices must be on the same Wi-Fi network/subnet - this app does not
 use the internet, only LAN sockets. If there is no shared Wi-Fi, use

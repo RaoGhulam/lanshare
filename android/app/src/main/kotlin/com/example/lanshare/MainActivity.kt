@@ -71,6 +71,26 @@ class MainActivity : FlutterActivity() {
             shareChannel.setMethodCallHandler(it)
             it.handleIntent(intent)
         }
+
+        MethodChannel(messenger, "lanshare/background").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> {
+                    try {
+                        ConnectionService.start(this, call.argument<String>("text") ?: "Connected")
+                        result.success(null)
+                    } catch (e: Exception) {
+                        // e.g. ForegroundServiceStartNotAllowedException when
+                        // started from the background on Android 12+.
+                        result.error("START_FAILED", e.message, null)
+                    }
+                }
+                "stop" -> {
+                    ConnectionService.stop(this)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     // launchMode="singleTask": sharing into the app while it's already
@@ -83,6 +103,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         hotspotHandler?.dispose()
+        // The Dart side (and its sockets) dies with the activity, so there's
+        // no session left to keep alive.
+        ConnectionService.stop(this)
         super.onDestroy()
     }
 
