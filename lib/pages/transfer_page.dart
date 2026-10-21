@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/foundation.dart';
 
+import '../services/share_intent_service.dart';
 import '../services/tcp_service.dart';
 import 'home_page.dart';
 
@@ -22,6 +23,7 @@ class TransferPage extends StatefulWidget {
 
 class _TransferPageState extends State<TransferPage> {
   final TcpService _service = TcpService.instance;
+  final ShareIntentService _shares = ShareIntentService.instance;
   StreamSubscription<String>? _snackbarSubscription;
   bool _isDraggingFiles = false;
   bool _isSendingClipboard = false;
@@ -33,11 +35,16 @@ class _TransferPageState extends State<TransferPage> {
     super.initState();
     _service.addListener(_onServiceChanged);
     _snackbarSubscription = _service.snackbarStream.listen(_showSnackbar);
+    // Files shared into the app from elsewhere go out as soon as we're
+    // connected - both those queued before connecting and new ones.
+    _shares.addListener(_sendPendingShares);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _sendPendingShares());
   }
 
   @override
   void dispose() {
     _service.removeListener(_onServiceChanged);
+    _shares.removeListener(_sendPendingShares);
     _snackbarSubscription?.cancel();
     super.dispose();
   }
@@ -88,6 +95,29 @@ class _TransferPageState extends State<TransferPage> {
       _showSnackbar('Failed to send clipboard: $e');
     } finally {
       if (mounted) setState(() => _isSendingClipboard = false);
+    }
+  }
+
+  Future<void> _sendPendingShares() async {
+    if (!_shares.hasPending ||
+        _service.connectionState != LanConnectionState.connected) {
+      return;
+    }
+    final pending = _shares.takePending();
+    for (final text in pending.texts) {
+      try {
+        await _service.sendClipboard(text);
+      } catch (e) {
+        _showSnackbar('Failed to send shared text: $e');
+      }
+    }
+    for (final path in pending.files) {
+      try {
+        await _service.sendFile(File(path));
+        _shares.deleteCachedFile(path);
+      } catch (e) {
+        _showSnackbar('Failed to send shared file: $e');
+      }
     }
   }
 

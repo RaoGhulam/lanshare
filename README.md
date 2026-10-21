@@ -1,9 +1,15 @@
 # LANShare
 
 A simple Flutter app for sharing clipboard text and files between two
-Android devices on the same Wi-Fi network, using raw TCP sockets
-(`dart:io` `ServerSocket` / `Socket`). No Firebase, no backend, no HTTP,
-no WebSockets - just a direct peer-to-peer TCP connection over LAN.
+devices (Android, Windows, Linux - in any combination) on the same Wi-Fi
+network, using raw TCP sockets (`dart:io` `ServerSocket` / `Socket`). No
+Firebase, no backend, no HTTP, no WebSockets - just a direct peer-to-peer
+TCP connection over LAN.
+
+No Wi-Fi router around? An Android device can host an **offline hotspot**
+that the other device (phone or laptop) joins - see
+[Offline hotspot mode](#offline-hotspot-mode-no-wi-fi). On Android,
+LANShare also shows up in the system **share sheet**.
 
 ---
 
@@ -14,18 +20,22 @@ lib/
   main.dart                 App entry point / MaterialApp
   pages/
     home_page.dart           "Create Server" / "Join Server" buttons
-    host_page.dart           Starts the TCP server, shows IP/port, waits for a client
-    join_page.dart           Enter IP + port, connects as a client
+    host_page.dart           Starts the TCP server (optionally an offline hotspot), shows IP/QR, waits for a client
+    join_page.dart           Enter IP + port or scan QR (joins the hotspot if needed), connects as a client
     transfer_page.dart       Shared screen: send/receive clipboard + files
   services/
     tcp_service.dart         Singleton managing the socket + wire protocol
     protocol.dart            Encode/decode helpers for the wire format
     media_store_helper.dart  Bridges to native MediaStore code (see below)
+    hotspot_service.dart     Offline hotspot host/join (bridges to HotspotHandler.kt)
+    share_intent_service.dart Files/text shared into the app (bridges to ShareHandler.kt)
   models/
     message.dart              MessageType, FileHeader, ReceivedFileInfo
-android_kotlin_snippet/
-  MainActivity.kt            Native Android side of media_store_helper.dart
-                              (goes in android/app/src/main/kotlin/...)
+    join_info.dart            QR code contents (IP, port, optional hotspot credentials)
+android/app/src/main/kotlin/com/example/lanshare/
+  MainActivity.kt            MediaStore channel + wires up the handlers below
+  HotspotHandler.kt          LocalOnlyHotspot / WifiNetworkSpecifier
+  ShareHandler.kt            ACTION_SEND / ACTION_SEND_MULTIPLE handling
 ```
 
 ---
@@ -99,7 +109,7 @@ public Downloads folder through Android's `MediaStore` API once the
 transfer is complete:
 
 - **Android 10+ (API 29+):** publishing goes through `MediaStore.Downloads`
-  (native code in `android_kotlin_snippet/MainActivity.kt`). This requires
+  (native code in `android/app/src/main/kotlin/.../MainActivity.kt`). This requires
   **no runtime permission at all** - it's the API scoped storage actually
   wants apps to use, so there's nothing that can be denied. (The old
   approach of requesting `MANAGE_EXTERNAL_STORAGE` "All files access" is
@@ -120,7 +130,9 @@ transfer is complete:
 1. On device A, tap **Create Server**. It starts listening on port 5000
    and shows its LAN IP address.
 2. On device B, tap **Join Server**, type in device A's IP (port 5000 by
-   default), and tap **Connect**.
+   default), and tap **Connect**. Servers you've connected to before are
+   listed under **Recent Devices** on that screen - tap one to reconnect
+   without typing or scanning (the X forgets it).
 3. Once connected, both devices land on the same **Transfer** screen:
    - **Send Clipboard** reads the device's clipboard and sends it over the
      socket; the peer sees it instantly under "Received Clipboard".
@@ -136,4 +148,50 @@ transfer is complete:
      that tapped it.
 
 Both devices must be on the same Wi-Fi network/subnet - this app does not
-use the internet, only LAN sockets.
+use the internet, only LAN sockets. If there is no shared Wi-Fi, use
+offline hotspot mode below.
+
+---
+
+## Offline hotspot mode (no Wi-Fi)
+
+For when there's no router - outdoors, on a train, on a network that
+blocks device-to-device traffic. One **Android** device creates a temporary
+offline hotspot; the other device joins it, and the normal TCP transfer
+runs over it. No internet or mobile data is used or shared.
+
+1. On the Android device, tap **No Wi-Fi? Create Offline Hotspot**.
+   Android generates a random Wi-Fi name and password, shown on screen
+   together with a QR code and the IP.
+2. Join it from the other device:
+   - **Another Android phone:** tap **Join Server > Scan QR Code**. It
+     joins the hotspot (Android 10+ shows a one-tap "Connect" dialog) and
+     connects automatically.
+   - **Windows / Linux laptop:** connect to the shown Wi-Fi name/password
+     from the normal Wi-Fi menu, then **Join Server** with the shown IP.
+3. When either side disconnects, the hotspot is shut down and the joining
+   phone returns to its usual network.
+
+Requirements / notes:
+- Hosting needs Android 8.0+. On Android 13+ it asks for the **Nearby
+  devices** permission; on Android 8-12 it asks for **Location**, and
+  Location must be switched on (an Android requirement for hotspots).
+- Turn off your regular mobile hotspot/tethering first - Android can't run
+  both.
+- Some phones drop their normal Wi-Fi connection while hosting or joining.
+- Laptop-to-laptop without a router isn't supported; one side must be an
+  Android device.
+
+---
+
+## Sharing from other apps (Android)
+
+LANShare registers for Android's share sheet, so in Files, Gallery,
+WhatsApp, etc. you can pick **Share > LANShare** for one or more files (or
+text).
+
+- If you're already connected, the items are sent immediately.
+- Otherwise the Home screen shows "N items ready to send"; create or join
+  a server as usual and they go out as soon as a device connects. Tap the
+  X to discard them.
+- Shared text is sent like clipboard text.

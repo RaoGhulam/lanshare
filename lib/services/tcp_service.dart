@@ -69,6 +69,10 @@ class TcpService extends ChangeNotifier {
   _ReadState _state = _ReadState.headerLength;
   bool _isDraining = false;
 
+  /// Sends are chained so two of them (e.g. an auto-sent share and a
+  /// manual pick) never interleave their bytes on the socket.
+  Future<void> _sendQueue = Future<void>.value();
+
   int _pendingHeaderLength = 0;
   Map<String, dynamic>? _pendingHeader;
   int _payloadRemaining = 0;
@@ -90,11 +94,17 @@ class TcpService extends ChangeNotifier {
 
   /// Starts listening for a single incoming connection on [port].
   /// Throws if the socket cannot be bound (e.g. port already in use).
-  Future<void> startServer({int port = defaultPort}) async {
+  ///
+  /// [advertisedIp] overrides the IP shown to the user, e.g. the hotspot
+  /// address in offline mode.
+  Future<void> startServer({
+    int port = defaultPort,
+    String? advertisedIp,
+  }) async {
     await disconnect(silent: true);
 
     this.port = port;
-    localIp = await getLocalIpAddress();
+    localIp = advertisedIp ?? await getLocalIpAddress();
     connectionState = LanConnectionState.listening;
     notifyListeners();
 
@@ -212,9 +222,21 @@ class TcpService extends ChangeNotifier {
   // Sending.
   // ---------------------------------------------------------------------
 
+  Future<void> _enqueueSend(Future<void> Function() task) {
+    final next = _sendQueue.then((_) => task());
+    _sendQueue = next.then((_) {}, onError: (Object _) {});
+    return next;
+  }
+
   /// Reads [text] (already fetched from the clipboard by the caller) and
   /// sends it to the peer.
-  Future<void> sendClipboard(String text) async {
+  Future<void> sendClipboard(String text) =>
+      _enqueueSend(() => _sendClipboardNow(text));
+
+  /// Streams [file] to the peer, updating [sendProgress] as bytes go out.
+  Future<void> sendFile(File file) => _enqueueSend(() => _sendFileNow(file));
+
+  Future<void> _sendClipboardNow(String text) async {
     if (_socket == null) {
       throw StateError('Not connected');
     }
@@ -227,8 +249,7 @@ class TcpService extends ChangeNotifier {
     _emitSnackbar('Clipboard Sent');
   }
 
-  /// Streams [file] to the peer, updating [sendProgress] as bytes go out.
-  Future<void> sendFile(File file) async {
+  Future<void> _sendFileNow(File file) async {
     if (_socket == null) {
       throw StateError('Not connected');
     }
@@ -420,6 +441,9 @@ class TcpService extends ChangeNotifier {
   // ---------------------------------------------------------------------
 
   /// Finds a usable IPv4 LAN address for this device (e.g. 192.168.1.23).
+  ///
+  /// Prefers private addresses on Wi-Fi/Ethernet interfaces, so a phone
+  /// that also has mobile data doesn't advertise its cellular address.
   Future<String> getLocalIpAddress() async {
     try {
       if (Platform.isWindows) {
@@ -434,35 +458,58 @@ class TcpService extends ChangeNotifier {
         type: InternetAddressType.IPv4,
       );
 
+      String? best;
+      var bestScore = -1;
       for (final interface in interfaces) {
         for (final addr in interface.addresses) {
-          if (!addr.isLoopback) {
-            return addr.address;
+          if (addr.isLoopback) continue;
+          final score = _scoreAddress(interface.name, addr.address);
+          if (score > bestScore) {
+            best = addr.address;
+            bestScore = score;
           }
         }
       }
+      if (best != null) return best;
     } catch (_) {
       // Fall through
     }
     return '0.0.0.0';
   }
 
-Future<String?> _getWindowsWifiIp() async {
-  try {
-    final result = await Process.run(
-      'powershell',
-      [
-        '-Command',
-        r"(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -like '*Wi-Fi*'}).IPAddress"
-      ],
-    );
-    final ip = result.stdout.toString().trim();
-    if (RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(ip)) {
-      return ip;
-    }
-  } catch (_) {}
-  return null;
-}
+  int _scoreAddress(String interfaceName, String address) {
+    final name = interfaceName.toLowerCase();
+    const cellular = ['rmnet', 'ccmni', 'pdp', 'v4-', 'tun', 'clat'];
+    if (cellular.any(name.startsWith)) return 0;
+
+    final parts = address.split('.').map(int.tryParse).toList();
+    final a = parts[0] ?? 0;
+    final b = parts.length > 1 ? (parts[1] ?? 0) : 0;
+    final isPrivate = a == 10 ||
+        (a == 192 && b == 168) ||
+        (a == 172 && b >= 16 && b <= 31);
+    if (!isPrivate) return 1;
+
+    const lanLike = ['wlan', 'wi-fi', 'wifi', 'wl', 'eth', 'en', 'ap', 'swlan'];
+    return lanLike.any(name.startsWith) ? 3 : 2;
+  }
+
+  Future<String?> _getWindowsWifiIp() async {
+    try {
+      final result = await Process.run(
+        'powershell',
+        [
+          '-Command',
+          r"(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -like '*Wi-Fi*'}).IPAddress"
+        ],
+      );
+      final ip = result.stdout.toString().trim();
+      if (RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(ip)) {
+        return ip;
+      }
+    } catch (_) {}
+    return null;
+  }
 
   /// On very old Android (API 28 and below, i.e. pre-scoped-storage) a
   /// classic storage permission is still required to write into a public

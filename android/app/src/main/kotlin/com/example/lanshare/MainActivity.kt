@@ -1,24 +1,22 @@
-// Replace the auto-generated
-//   android/app/src/main/kotlin/<your/package/path>/MainActivity.kt
-// (created by `flutter create .`) with this file, then fix the
-// `package` line below to match your app's actual package name (the same
-// one used in android/app/build.gradle -> applicationId / namespace).
+// Native side of the app's MethodChannels:
 //
-// This implements the "lanshare/media_store" MethodChannel that
-// lib/services/media_store_helper.dart calls into. It publishes a
-// received file into the public Downloads/LANShare folder:
-//
-// - Android 10+ (API 29+): via MediaStore.Downloads. No storage permission
-//   is required for this at all - inserting through MediaStore is exactly
-//   what scoped storage wants apps to do, so there is nothing that can be
-//   "denied".
-// - Android 9 and below (API 28-): scoped storage doesn't exist yet, so a
-//   plain file copy into the public Downloads directory works, as long as
-//   WRITE_EXTERNAL_STORAGE is granted (requested from the Dart side).
+// - "lanshare/media_store" (handled here): publishes a received file into
+//   the public Downloads/LANShare folder, used by
+//   lib/services/media_store_helper.dart.
+//     - Android 10+ (API 29+): via MediaStore.Downloads. No storage
+//       permission is required for this at all - inserting through
+//       MediaStore is exactly what scoped storage wants apps to do, so there
+//       is nothing that can be "denied".
+//     - Android 9 and below (API 28-): scoped storage doesn't exist yet, so a
+//       plain file copy into the public Downloads directory works, as long as
+//       WRITE_EXTERNAL_STORAGE is granted (requested from the Dart side).
+// - "lanshare/hotspot": offline hotspot host/join, see HotspotHandler.kt.
+// - "lanshare/share": files/text shared into the app, see ShareHandler.kt.
 
 package com.example.lanshare
 
 import android.content.ContentValues
+import android.content.Intent
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -33,6 +31,8 @@ import java.io.FileOutputStream
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "lanshare/media_store"
+    private var hotspotHandler: HotspotHandler? = null
+    private var shareHandler: ShareHandler? = null
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -61,6 +61,29 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
+        hotspotHandler = HotspotHandler(this).also {
+            MethodChannel(messenger, "lanshare/hotspot").setMethodCallHandler(it)
+        }
+        val shareChannel = MethodChannel(messenger, "lanshare/share")
+        shareHandler = ShareHandler(this, shareChannel).also {
+            shareChannel.setMethodCallHandler(it)
+            it.handleIntent(intent)
+        }
+    }
+
+    // launchMode="singleTask": sharing into the app while it's already
+    // running (e.g. mid-session) lands here instead of starting a second copy.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        shareHandler?.handleIntent(intent)
+    }
+
+    override fun onDestroy() {
+        hotspotHandler?.dispose()
+        super.onDestroy()
     }
 
     /**

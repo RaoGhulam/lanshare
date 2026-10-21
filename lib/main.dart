@@ -1,8 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'pages/home_page.dart';
+import 'services/hotspot_service.dart';
+import 'services/share_intent_service.dart';
+import 'services/tcp_service.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  HotspotService.instance.attach(TcpService.instance);
+  unawaited(ShareIntentService.instance.init());
   runApp(const LanShareApp());
 }
 
