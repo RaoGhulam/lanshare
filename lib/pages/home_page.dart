@@ -84,8 +84,7 @@ class _HomePageState extends State<HomePage> {
                 const Icon(Icons.wifi_tethering, size: 96, color: Colors.indigo),
                 const SizedBox(height: 16),
                 const Text(
-                  'Share clipboard text and files with another device
-on the same Wi-Fi network - or without one, using offline hotspot mode.',
+                  'Share clipboard text and files with another device\non the same Wi-Fi network - or without one, using offline hotspot mode.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 16, color: Colors.black54),
                 ),

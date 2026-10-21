@@ -68,22 +68,24 @@ class _JoinPageState extends State<JoinPage> {
 
     final ip = _ipController.text.trim();
     final port = int.parse(_portController.text.trim());
-    final joinHotspot = hotspot != null &&
-        hotspot.viaHotspot &&
+    final ssid = hotspot?.ssid;
+    final password = hotspot?.password ?? '';
+    final joinHotspot = ssid != null &&
+        ssid.isNotEmpty &&
         HotspotService.instance.isSupported;
 
     setState(() {
       _isConnecting = true;
       _connectingLabel =
-          joinHotspot ? 'Joining "${hotspot!.ssid}"...' : 'Connecting...';
+          joinHotspot ? 'Joining "$ssid"...' : 'Connecting...';
     });
 
     var joined = false;
     try {
       if (joinHotspot) {
         await HotspotService.instance.joinNetwork(
-          hotspot!.ssid!,
-          hotspot.password ?? '',
+          ssid!,
+          password,
         );
         joined = true;
         if (mounted) setState(() => _connectingLabel = 'Connecting...');
