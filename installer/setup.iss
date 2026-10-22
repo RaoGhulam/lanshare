@@ -16,7 +16,7 @@
 ;      Flutter actually put the build output.
 
 #define MyAppName "LANShare"
-#define MyAppVersion "2.0.0"
+#define MyAppVersion "2.0.1"
 #define MyAppPublisher "LANShare"
 #define MyAppExeName "lanshare.exe"
 
